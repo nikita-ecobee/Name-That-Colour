@@ -1,4 +1,4 @@
-# Name-That-Colour
+# Name That Colour
 Android Studio plugin implementation of name that color.
 
 <h2>Disclaimer</h2>
