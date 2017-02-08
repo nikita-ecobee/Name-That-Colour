@@ -19,6 +19,8 @@ import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.xml.XmlAttribute;
 import com.intellij.psi.xml.XmlAttributeValue;
+import com.intellij.psi.xml.XmlTag;
+import com.intellij.psi.xml.XmlText;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.android.actions.CreateXmlResourceDialog;
 import org.jetbrains.android.dom.manifest.Manifest;
@@ -34,7 +36,7 @@ import java.util.Collections;
 import java.util.regex.Pattern;
 
 public class NameThatColorIntentionAction extends PsiElementBaseIntentionAction {
-    private static final Pattern COLOR_PATTERN = Pattern.compile("#([0-8a-fA-F]{8}|[0-8a-fA-F]{6}|[0-8a-fA-F]{3})");
+    private static final Pattern COLOR_PATTERN = Pattern.compile("#([0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})");
     @NotNull
     @Override
     public String getText() {
@@ -48,18 +50,34 @@ public class NameThatColorIntentionAction extends PsiElementBaseIntentionAction 
         return getText();
     }
 
+    private String getMatchedColorValue(@NotNull PsiElement element) {
+        String color = null;
+        XmlText xmlText;
+        XmlAttributeValue xmlAttributeValue;
+
+        if((xmlText = PsiTreeUtil.getParentOfType(element, XmlText.class)) != null) {
+            color = xmlText.getValue();
+        } else if((xmlAttributeValue = PsiTreeUtil.getParentOfType(element, XmlAttributeValue.class)) != null) {
+            color = xmlAttributeValue.getValue();
+        }
+
+        if(color != null && COLOR_PATTERN.matcher(color).find()) {
+            return color;
+        }
+        return null;
+    }
+
     @Override
     public boolean isAvailable(@NotNull Project project, Editor editor, @NotNull PsiElement element) {
-        final PsiElement parent = element.getParent();
-        return parent instanceof XmlAttributeValue && COLOR_PATTERN.matcher(((XmlAttributeValue)parent).getValue()).find();
+        return getMatchedColorValue(element) != null;
     }
 
     @Override
     public void invoke(@NotNull Project project, Editor editor, @NotNull PsiElement element) throws IncorrectOperationException {
-        final XmlAttributeValue literal = PsiTreeUtil.getParentOfType(element, XmlAttributeValue.class, false);
+        String literal = getMatchedColorValue(element);
         if (literal == null) return;
 
-        String colorHexString = StringUtil.unquoteString(literal.getValue()).toUpperCase();
+        String colorHexString = StringUtil.unquoteString(literal).toUpperCase();
         String colorName = NameThatColor.getColorName(StringUtil.trimStart(colorHexString, "#"));
 
         doInvoke(project, editor, colorName, colorHexString, element);
@@ -109,9 +127,13 @@ public class NameThatColorIntentionAction extends PsiElementBaseIntentionAction 
             }
         }
 
-        final XmlAttribute attribute = PsiTreeUtil.getParentOfType(element, XmlAttribute.class);
-        if (attribute != null) {
-            attribute.setValue(ResourceValue.referenceTo('@', null, type.getName(), resName).toString());
+        XmlText xmlText;
+        XmlAttribute xmlAttribute;
+
+        if((xmlText = PsiTreeUtil.getParentOfType(element, XmlText.class)) != null) {
+            xmlText.setValue(ResourceValue.referenceTo('@', null, type.getName(), resName).toString());
+        } else if((xmlAttribute = PsiTreeUtil.getParentOfType(element, XmlAttribute.class)) != null) {
+            xmlAttribute.setValue(ResourceValue.referenceTo('@', null, type.getName(), resName).toString());
         }
 
         PsiDocumentManager.getInstance(project).commitAllDocuments();

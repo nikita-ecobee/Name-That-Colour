@@ -14,7 +14,7 @@ public class NameThatColor {
         colorHexString = colorHexString.toUpperCase();
         if(colorHexString.length() > 6) {
             String alphaValue = colorHexString.substring(0,2);
-            int alpha = (int)((Integer.valueOf(alphaValue, 16) / 256.0f) * 100f);
+            int alpha = Math.round((Integer.valueOf(alphaValue, 16) / 256.0f) * 100f);
             colorHexString = colorHexString.substring(2);
             return getColorName(colorHexString) + ("_alpha_" + alpha);
         }
