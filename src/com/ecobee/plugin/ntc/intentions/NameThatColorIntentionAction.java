@@ -4,7 +4,6 @@ import com.android.resources.ResourceFolderType;
 import com.android.resources.ResourceType;
 import com.ecobee.plugin.ntc.NameThatColor;
 import com.intellij.CommonBundle;
-import com.intellij.codeInsight.intention.PsiElementBaseIntentionAction;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.undo.UndoUtil;
 import com.intellij.openapi.editor.Editor;
@@ -13,29 +12,24 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.PsiDocumentManager;
-import com.intellij.psi.PsiElement;
-import com.intellij.psi.PsiFile;
-import com.intellij.psi.util.PsiTreeUtil;
-import com.intellij.psi.xml.XmlAttribute;
-import com.intellij.psi.xml.XmlAttributeValue;
-import com.intellij.psi.xml.XmlTag;
+import com.intellij.psi.*;
+import com.intellij.psi.xml.XmlFile;
 import com.intellij.psi.xml.XmlText;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.android.actions.CreateXmlResourceDialog;
 import org.jetbrains.android.dom.manifest.Manifest;
 import org.jetbrains.android.dom.resources.ResourceValue;
 import org.jetbrains.android.facet.AndroidFacet;
+import org.jetbrains.android.intentions.AndroidAddStringResourceAction;
 import org.jetbrains.android.util.AndroidBundle;
 import org.jetbrains.android.util.AndroidResourceUtil;
 import org.jetbrains.android.util.AndroidUtils;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
-
 import java.util.Collections;
 import java.util.regex.Pattern;
 
-public class NameThatColorIntentionAction extends PsiElementBaseIntentionAction {
+public class NameThatColorIntentionAction extends AndroidAddStringResourceAction {
     private static final Pattern COLOR_PATTERN = Pattern.compile("#([0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})");
     @NotNull
     @Override
@@ -50,42 +44,53 @@ public class NameThatColorIntentionAction extends PsiElementBaseIntentionAction 
         return getText();
     }
 
-    private String getMatchedColorValue(@NotNull PsiElement element) {
-        String color = null;
-        XmlText xmlText;
-        XmlAttributeValue xmlAttributeValue;
+    private static String getMatchedColorValue(@NotNull Project project, PsiFile file, @NotNull PsiElement element, ResourceType type) {
+        if(file instanceof PsiJavaFile) return null;
 
-        if((xmlText = PsiTreeUtil.getParentOfType(element, XmlText.class)) != null) {
-            color = xmlText.getValue();
-        } else if((xmlAttributeValue = PsiTreeUtil.getParentOfType(element, XmlAttributeValue.class)) != null) {
-            color = xmlAttributeValue.getValue();
+        String value = getStringLiteralValue(project, element, file, type);
+
+        if(value == null) {
+            if (file instanceof XmlFile && element instanceof XmlText) {
+                value = ((XmlText) element).getValue();
+            }
         }
 
-        if(color != null && COLOR_PATTERN.matcher(color).find()) {
-            return color;
+        if (value != null && !value.isEmpty() && COLOR_PATTERN.matcher(value).find()) {
+            return value;
         }
         return null;
     }
 
     @Override
-    public boolean isAvailable(@NotNull Project project, Editor editor, @NotNull PsiElement element) {
-        return getMatchedColorValue(element) != null;
+    protected ResourceType getType() {
+        return ResourceType.COLOR;
     }
 
     @Override
-    public void invoke(@NotNull Project project, Editor editor, @NotNull PsiElement element) throws IncorrectOperationException {
-        String literal = getMatchedColorValue(element);
-        if (literal == null) return;
-
-        String colorHexString = StringUtil.unquoteString(literal).toUpperCase();
-        String colorName = NameThatColor.getColorName(StringUtil.trimStart(colorHexString, "#"));
-
-        doInvoke(project, editor, colorName, colorHexString, element);
+    public boolean isAvailable(@NotNull Project project, Editor editor, PsiFile file) {
+        PsiElement element = getPsiElement(file, editor);
+        return element != null && getMatchedColorValue(project, file, element, getType()) != null;
     }
 
-    private static void doInvoke(Project project, Editor editor, String resName, String value, PsiElement element) {
-        ResourceType type = ResourceType.COLOR;
-        PsiFile file = element.getContainingFile();
+    @Override
+    public void invoke(@NotNull Project project, Editor editor, PsiFile file) throws IncorrectOperationException {
+        PsiElement element = getPsiElement(file, editor);
+        String value;
+        if (element != null && (value = getMatchedColorValue(project, file, element, getType())) != null) {
+            String colorHexString = StringUtil.unquoteString(value).toUpperCase();
+            String colorName = NameThatColor.getColorName(StringUtil.trimStart(colorHexString, "#"));
+
+            if(getStringLiteralValue(project, element, file, getType()) != null) {
+                doInvoke(project, editor, file, colorName, element, getType());
+            } else {
+                doExpandedInvoke(project, editor, file, colorName, element, getType());
+            }
+        }
+
+    }
+
+    private static void doExpandedInvoke(Project project, Editor editor, PsiFile file, String resName, PsiElement element, ResourceType type) {
+        String value = getMatchedColorValue(project, file, element, type);
         assert value != null;
 
         final AndroidFacet facet = AndroidFacet.getInstance(file);
@@ -104,12 +109,11 @@ public class NameThatColorIntentionAction extends PsiElementBaseIntentionAction 
             assert resourceDir != null;
             AndroidResourceUtil.createValueResource(project, resourceDir, resName, type, fileName,
                     Collections.singletonList(ResourceFolderType.VALUES.getName()), value);
-        }
-        else {
+        } else {
             Module facetModule = facet.getModule();
             final CreateXmlResourceDialog dialog = new CreateXmlResourceDialog(facetModule, type, resName, value, true,
                     null, file.getVirtualFile());
-            dialog.setTitle("Extract Color");
+            dialog.setTitle("Extract Resource");
             if (!dialog.showAndGet()) {
                 return;
             }
@@ -127,18 +131,15 @@ public class NameThatColorIntentionAction extends PsiElementBaseIntentionAction 
             }
         }
 
-        XmlText xmlText;
-        XmlAttribute xmlAttribute;
-
-        if((xmlText = PsiTreeUtil.getParentOfType(element, XmlText.class)) != null) {
-            xmlText.setValue(ResourceValue.referenceTo('@', null, type.getName(), resName).toString());
-        } else if((xmlAttribute = PsiTreeUtil.getParentOfType(element, XmlAttribute.class)) != null) {
-            xmlAttribute.setValue(ResourceValue.referenceTo('@', null, type.getName(), resName).toString());
+        if(file instanceof XmlFile && element instanceof XmlText) {
+            ((XmlText)element).setValue(ResourceValue.referenceTo('@', null, type.getName(), resName).toString());
         }
 
         PsiDocumentManager.getInstance(project).commitAllDocuments();
         UndoUtil.markPsiFileForUndo(file);
     }
+
+
 
     private static String getPackage(@NotNull AndroidFacet facet) {
         Manifest manifest = facet.getManifest();
