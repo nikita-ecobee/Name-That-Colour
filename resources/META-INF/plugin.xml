@@ -1,7 +1,7 @@
 <idea-plugin version="2">
     <id>com.ecobee.plugin.ntc</id>
     <name>Plugin that names the color based on hex value.</name>
-    <version>0.1</version>
+    <version>0.1.1</version>
     <vendor email="devolper@ecobee.com" url="https://www.ecobee.com">ecobee</vendor>
     <description><![CDATA[
     Android Studio plugin implementation of name that color.

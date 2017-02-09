@@ -75,11 +75,48 @@ public class NameThatColor {
             this.g = this.color.getGreen();
             this.b = this.color.getBlue();
 
-            float[] hsl = Color.RGBtoHSB(this.r, this.g, this.b, null);
+            float[] hsl = RGBtoHSL(this.r, this.g, this.b, null);
             this.h = hsl[0];
             this.s = hsl[1];
             this.l = hsl[2];
         }
+    }
+
+    private static float[] RGBtoHSL(float r, float g, float b, float[] hslvals) {
+        if (hslvals == null) {
+            hslvals = new float[3];
+        }
+        r = r / 255.0f;
+        g = g / 255.0f;
+        b = b / 255.0f;
+
+        float min, max, delta, h, s, l;
+
+        min = Math.min(r, Math.min(g, b));
+        max = Math.max(r, Math.max(g, b));
+        delta = max - min;
+        l = (min + max) / 2;
+
+        s = 0;
+        if(l > 0 && l < 1)
+            s = delta / (l < 0.5 ? (2 * l) : (2 - 2 * l));
+
+        h = 0;
+        if(delta > 0)
+        {
+            if (max == r && max != g)
+                h += (g - b) / delta;
+            if (max == g && max != b)
+                h += (2 + (b - r) / delta);
+            if (max == b && max != r)
+                h += (4 + (r - g) / delta);
+            h /= 6;
+        }
+
+        hslvals[0] = h * 255;
+        hslvals[1] = s * 255;
+        hslvals[2] = l * 255;
+        return hslvals;
     }
 
     private final static Map<String, String> NAMES = new HashMap<String, String>(){{
